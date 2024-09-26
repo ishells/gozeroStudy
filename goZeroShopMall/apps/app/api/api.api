@@ -1,47 +1,48 @@
 syntax = "v1"
 
 import (
-	"apis"
+	"apis/user.api"
+	"apis/order.api"
+	"apis/userReceiveAddress.api"
+	"apis/usercollection.api"
 )
 
 // 首页API定义
 // 原型图可见imgs/5-homepage.webp
 type (
-
 	Product {
-		Id          int64  `json:"id"`	// 商品ID
-		Name        string 	`json:"name"` // 商品名称
-		Description string `json:"description"` // 商品描述
-		Price       float64  `json:"price"` // 商品价格
-		Stock       int64  `json:"stock"` // 商品库存
-		Category    string `json:"category"` // 商品分类
-		Status      int64 `json:"status"` // 商品状态 1-正常 2-下架
-		CreateTime int64 `json:"create_time"` // 商品创建时间
-		UpdateTime int64 `json:"update_time"` // 商品更新时间
+		Id          int64   `json:"id"`          // 商品ID
+		Name        string  `json:"name"`        // 商品名称
+		Description string  `json:"description"` // 商品描述
+		Price       float64 `json:"price"`       // 商品价格
+		Stock       int64   `json:"stock"`       // 商品库存
+		Category    string  `json:"category"`    // 商品分类
+		Status      int64   `json:"status"`      // 商品状态 1-正常 2-下架
+		CreateTime  int64   `json:"create_time"` // 商品创建时间
+		UpdateTime  int64   `json:"update_time"` // 商品更新时间
 	}
 
-    // 抢购倒计时功能 这里返回抢购开始时间 客户端计算剩余时间进行倒计时
+	// 抢购倒计时功能 这里返回抢购开始时间 客户端计算剩余时间进行倒计时
 	FlashSaleResponse {
-		StartTime int64 `json:"start_time"` // 抢购开始时间
-		Products []*Product `json:"products"`
+		StartTime int64      `json:"start_time"` // 抢购开始时间
+		Products  []*Product `json:"products"`
 	}
 
 	// 推荐接口返回数据需要支持分页 分页采用游标方式
 	// Ps参数为每页返回数据条数 默认一页返回20条数据 服务端要再次校验Ps值 防止Ps恶意值导致的性能问题
 	// Cursor为游标值 游标为每页最后一条数据的RecommendTime
 	RecommendRequest {
-		Cursor  int64  `json:"cursor"`
-		Ps      int64  `form:"ps,default=20"`  // 每页大小
+		Cursor int64 `json:"cursor"`
+		Ps     int64 `form:"ps,default=20"` // 每页大小
 	}
 
 	// 返回值中Products定义了返回的商品列表，IsEnd表示是否是最后一页，客户端通过判断IsEnd是否为true决定是否终止请求
 	// RecommendTime为本页返回数据最后一条数据的推荐时间，推荐列表按照推荐时间倒序返回。
 	RecommendResponse {
-		Products []*Product `json:"products"`
-     	IsEnd    bool    	`json:"is_end"`			// 是否是最后一页
-		RecommendTime int64  `json:"recommend_time"` // 商品列表最后一个商品的推荐时间
+		Products      []*Product `json:"products"`
+		IsEnd         bool       `json:"is_end"`         // 是否是最后一页
+		RecommendTime int64      `json:"recommend_time"` // 商品列表最后一个商品的推荐时间
 	}
-
 )
 
 // 分类API定义
@@ -53,45 +54,92 @@ type (
 	// 此类需要排序的列表我们一般会通过redis的sorted set来实现
 	// score为需要排序的属性，比如销量 member为对应商品的id
 	CategoryListRequest {
-		Cursor  int64  `form:"cursor"` // 分页游标
-		Ps      int64  `form:"ps,default=20"`  // 每页大小
-		Sort    string `form:"sort"` // 排序方式
-		Category string `form:"category"` // 分类
+		Cursor   int64  `form:"cursor"`        // 分页游标
+		Ps       int64  `form:"ps,default=20"` // 每页大小
+		Sort     string `form:"sort"`          // 排序方式
+		Category string `form:"category"`      // 分类
 	}
 
 	CategoryListResponse {
 		Products []*Product `json:"products"`
-		IsEnd    bool    	`json:"is_end"`			// 是否是最后一页
-		LastVal int64  		`json:"last_var"` // 商品列表最后一个商品的推荐时间
+		IsEnd    bool       `json:"is_end"`   // 是否是最后一页
+		LastVal  int64      `json:"last_var"` // 商品列表最后一个商品的推荐时间
 	}
 
 /*
-		提到sorted set在这里说一个笔者使用sorted set曾经踩过的一个坑。
-		我们使用缓存的常用姿势是cache aside模式，即先读缓存，
-		如果缓存命中则直接从缓存中返回数据，如果读取缓存miss了，则回源到DB中读数据，
-		且为了后面更快的读取数据，从DB中读取的数据会回塞到缓存中，且会给缓存设置一个过期时间。
+	提到sorted set在这里说一个笔者使用sorted set曾经踩过的一个坑。
+	我们使用缓存的常用姿势是cache aside模式，即先读缓存，
+	如果缓存命中则直接从缓存中返回数据，如果读取缓存miss了，则回源到DB中读数据，
+	且为了后面更快的读取数据，从DB中读取的数据会回塞到缓存中，且会给缓存设置一个过期时间。
 
-		而为了保证缓存和数据库数据的一致性，当我们新增数据的时候需要把这条数据也写到缓存中从而保证缓存和数据库数据一致，
-		一般代码会这么写，先通过Exists判断缓存对应的key是否存在，如果存在就往sorted set中增加一条数据，
-		如果不存在则不处理，等待下次来读取列表的时候重新加载列表数据到缓存中。
-		我们发现有时候缓存中列表数据会变成一条，但是数据其实是有多条的，当时感觉是很诡异的，
-		通过排查最终定位到问题，原来是Exists操作和Zadd两个操作不是原子的操作导致的，也就是在Exists的时候缓存的Key还没有过期，
-		但是在Exists后和进行Zadd前这个key过期了，然后再执行Zadd就导致缓存列表中就只有本次新增的这条数据了。
-		解决这个问题的办法也很简单，不使用Exists判断key是否存在，而是通过Expire给这个key续期，如果key不存在则Expire返回0，
-		key存在则Expire返回1，续期成功。缓存的使用我们还踩过很多坑，特别是在高并发的场景下，这个后续文章再详细介绍
+	而为了保证缓存和数据库数据的一致性，当我们新增数据的时候需要把这条数据也写到缓存中从而保证缓存和数据库数据一致，
+	一般代码会这么写，先通过Exists判断缓存对应的key是否存在，如果存在就往sorted set中增加一条数据，
+	如果不存在则不处理，等待下次来读取列表的时候重新加载列表数据到缓存中。
+	我们发现有时候缓存中列表数据会变成一条，但是数据其实是有多条的，当时感觉是很诡异的，
+	通过排查最终定位到问题，原来是Exists操作和Zadd两个操作不是原子的操作导致的，也就是在Exists的时候缓存的Key还没有过期，
+	但是在Exists后和进行Zadd前这个key过期了，然后再执行Zadd就导致缓存列表中就只有本次新增的这条数据了。
+	解决这个问题的办法也很简单，不使用Exists判断key是否存在，而是通过Expire给这个key续期，如果key不存在则Expire返回0，
+	key存在则Expire返回1，续期成功。缓存的使用我们还踩过很多坑，特别是在高并发的场景下，这个后续文章再详细介绍
 */
 
+)
+
+// 购物车API定义
+// 原型图可见imgs/8-cartpage.webp
+// 在这里对购物车的数量做一下限制，我们限制购物车最多只能加200个商品，这样做是为了在全选的时候下单不会导致过高的写放大，
+// 由于加了200条的限制，所以购物车列表不需要分页。
+type (
+	CartListRequest {
+		UId int64 `form:"uid"`
+	}
+
+	CartListResponse {
+		Products []*CartProduct `json:"products"`
+	}
+
+	CartProduct {
+		Product *Product `json:"product"`
+		Count   int64    `json:"count"`
+	}
 )
 
 // 商品评价API定义
 // 原型图可见imgs/7-commentpage.webp
 type (
 	//	商品评价的功能同样也是需要支持分页的，采用游标的方式进行分页，同时按照评论时间进行倒序
-	CommentListRequest {
-		Cursor  int64  `form
+	ProductCommentRequest {
+		ProductID int64 `form:"product_id"`
+		Cursor    int64 `form:"cursor"`
+		Ps        int64 `form:"ps,default=20"`
+	}
+
+	ProductCommentResponse {
+		Comments    []*Comment `json:"comments"`
+		IsEnd       bool       `json:"is_end"`       // 是否是最后一页
+		CommentTime int64      `json:"comment_time"` // 评论列表最后一个评论的时间
+	}
+
+	Comment {
+		ID         int64    `json:"id"`          // 评论ID
+		ProductID  int64    `json:"product_id"`  // 商品ID
+		Content    string   `json:"content"`     // 评论内容
+		Images     []*Image `json:"images"`      // 评论图片
+		User       *User    `json:"user"`        // 评论用户
+		CreateTime int64    `json:"create_time"` // 评论创建时间
+		UpdateTime int64    `json:"update_time"` // 评论更新时间
+	}
+
+	User {
+		ID     int64  `json:"id"`     // 用户ID
+		Name   string `json:"name"`   //	用户名
+		Avatar string `json:"avatar"` // 头像
+	}
+
+	Image {
+		ID  int64  `json:"id"`
+		URL string `json:"url"` // 图片URL
 	}
 )
-
 
 type Request {
 	Name string `path:"name,options=you|me"`
