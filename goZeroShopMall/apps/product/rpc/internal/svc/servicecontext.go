@@ -1,6 +1,6 @@
 package svc
 
-import "goZeroShopMall/apps/product/rpc/product/internal/config"
+import "goZeroShopMall/apps/product/rpc/internal/config"
 
 type ServiceContext struct {
 	Config config.Config

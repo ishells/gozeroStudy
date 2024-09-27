@@ -4,10 +4,10 @@ import (
 	"flag"
 	"fmt"
 
-	"goZeroShopMall/apps/product/rpc/product/internal/config"
-	"goZeroShopMall/apps/product/rpc/product/internal/server"
-	"goZeroShopMall/apps/product/rpc/product/internal/svc"
-	"goZeroShopMall/apps/product/rpc/product/product"
+	"goZeroShopMall/apps/product/rpc/internal/config"
+	"goZeroShopMall/apps/product/rpc/internal/server"
+	"goZeroShopMall/apps/product/rpc/internal/svc"
+	"goZeroShopMall/apps/product/rpc/product"
 
 	"github.com/zeromicro/go-zero/core/conf"
 	"github.com/zeromicro/go-zero/core/service"
